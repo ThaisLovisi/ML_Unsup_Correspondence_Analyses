@@ -1,0 +1,622 @@
+---
+title: "Practice Exercise CA - MBA DSA USP ESALQ"
+author: "Thais Lovisi"
+date: "2023-01-30"
+output: html_document
+---
+# Introduction
+
+This exercise is my trial to reproduce the step-by-step made during the  Correspondence Analysis (a.k.a reciprocal averaging) classes. The complementary file with a theoric base can be found in **.pdf** format within this project folder.
+
+Step-by-Step to be followed:
+  <br>I.   Criação da Tabela de Contingência 
+	<br>II.  Cálculo da frequência absoluta esperada.
+	<br>III. Cálculo da tabela de resíduos freq abs obs- freq abs esperado
+	<br>IV.  Tabela com valores Qui-Quadrado e comparação com o p-valor
+	<br>V.   Cálculo dos resíduos padronizados e dos resíduos padronizados ajustados
+	<br>VI.  Determinar autovalores
+	<br>VII. Determinação as massas em linha e coluna
+	<br>VIII.Definição das coordenadas (scores) das categorias no mapa perceptual 
+		
+### About the Data set for Simple CA (ANACOR)
+    Contains:
+      Investor profile with information about investor name, investment type, and investor's profile (Conservator, Moderate or Agressive)
+
+
+### About the Data set for MCA
+    Contains:
+      Investor profile with information about investor's name, investment type, investor profile (Conservator, Moderate or Agressive), and Marital status
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R setup
+
+```{r message=FALSE, warning=FALSE}
+pacotes <- c("plotly", #plataforma gráfica
+             "tidyverse", #carregar outros pacotes do R
+             "ggrepel", #geoms de texto e rótulo para 'ggplot2' que ajudam a evitar sobreposição de textos
+             "knitr", "kableExtra", #formatação de tabelas
+             "sjPlot", #elaboração de tabelas de contingência
+             "FactoMineR", #função 'CA' para elaboração direta da Anacor
+             "amap", #funções 'matlogic' e 'burt' para matrizes binária e de Burt
+             "ade4") #função 'dudi.acm' para elaboração da ACM
+
+if(sum(as.numeric(!pacotes %in% installed.packages())) != 0){
+  instalador <- pacotes[!pacotes %in% installed.packages()]
+  for(i in 1:length(instalador)) {
+    install.packages(instalador, dependencies = T)
+    break()}
+  sapply(pacotes, require, character = T) 
+} else {
+  sapply(pacotes, require, character = T) 
+}
+```
+
+### Import data
+
+The data is in .Rdata format, thus we gonna load it directly
+
+```{r message=FALSE, warning=FALSE}
+
+#For the ANACOR
+
+load(file = "perfil_investidor_aplicacao.RData")
+
+
+#For MCA
+
+load("perfil_investidor_aplicacao_estadocivil.RData")
+
+```
+
+## ANACOR
+
+### Step 0- Knowing my data
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Displaying the table view here
+perfil_investidor_aplicacao %>%
+  kable() %>%
+  kable_material_dark(bootstrap_options = "striped",
+                      full_width = FALSE,
+                      font_size = 20)
+```
+```{r message=FALSE, warning=FALSE}
+dim(perfil_investidor_aplicacao)
+
+for (c in colnames(perfil_investidor_aplicacao)){ #for each col c on the range
+                for (i in 1:nrow(perfil_investidor_aplicacao)){ #for each row i on the range
+                    if (is.na(perfil_investidor_aplicacao[i,c])) {
+                      print (c(c,"NA FOUND"))
+                      break #if doesnt work with other coders go change break by next
+                    }else{
+                      next
+                    }
+                }       
+              }
+```
+
+This data set contains 100 rows and 3 columns, and does not contains NA values.
+
+#### Unique values for columns to be analised
+
+```{r paged.print=TRUE}
+  print(unique(perfil_investidor_aplicacao[,2]))
+```
+```{r paged.print=TRUE}
+print(unique(perfil_investidor_aplicacao[,3]))
+```
+#### Frequencies Table
+
+```{r}
+summary(perfil_investidor_aplicacao)
+
+```
+
+## Step 1- Creating the Contingency Table
+
+Contingency Table with observed frequencies
+
+```{r}
+contingency_table_CA <- table(perfil_investidor_aplicacao[[2]], perfil_investidor_aplicacao[[3]])
+contingency_table_CA
+```
+
+
+
+```{r}
+# Definition of observation number at the contingency table
+n <- sum(contingency_table_CA)
+n
+```
+
+```{r message=FALSE, warning=FALSE}
+# Chi-Square test
+Chi2 <- chisq.test(x = contingency_table_CA)
+Chi2
+```
+### Table creation
+
+```{r message=FALSE, warning=FALSE}
+# Contingency table with obs. freq
+Chi2$observed
+```
+
+```{r message=FALSE, warning=FALSE}
+# Contingency table with expec. freq
+Chi2$expected
+```
+We need to display the table as containing 
+<br/>We can do so by using sjt.xtab. sjt.xtab shows contingency tables as HTML file in browser or viewer pane, or saves them as file.
+<br/>The table will be designed as Perfil x Aplicação. So for labels we will have:
+            <br/>row label = Perfil (Investor's Profile)
+            <br/>column label = Aplicação (Investment Type)
+
+```{r}
+sjt.xtab(var.row = perfil_investidor_aplicacao$perfil,
+         var.col = perfil_investidor_aplicacao$aplicacao,
+         show.exp = TRUE)
+```
+
+## Step 3 - Calculating the Residuals
+
+```{r}
+Chi2$observed - Chi2$expected
+```
+
+A positive residual shows us that the count for that object attribute pairing is much higher than expected, suggesting a strong relationship; correspondingly, a negative residual shows a lower value than expected, suggesting a weaker relationship.
+
+So in this step we can conclude that the pairs 
+  strong related are: Conservador and Poupança; Moderado and CDB; and Agressivo and Ações.
+  weakly related are: Agressivo and Poupança; Moderado and Ações; and Conservador and Ações.
+  
+
+
+```{r}
+# Chi-square per cell
+
+((Chi2$observed - Chi2$expected)^2)/Chi2$expected
+```
+#### Standardized Residuals
+
+```{r}
+Chi2$residuals
+```
+
+#### Standardized Residuals Adjusted
+
+```{r}
+Chi2$stdres
+```
+For better visualization lets construct a Heat map from the residuals
+```{r}
+data.frame(Chi2$stdres) %>%
+  rename(perfil = 1,
+         aplicacao = 2) %>% 
+  ggplot(aes(x = fct_rev(perfil), y = aplicacao,
+             fill = Freq, label = round(Freq, 3))) +
+  geom_tile() +
+  geom_text(size = 5) +
+  scale_fill_gradient2(low = "white", 
+                       mid = "white", 
+                       high = "purple",
+                       midpoint = 1.96) +
+  labs(x = 'Perfil', y = 'Aplicação', fill = "Res. Pad. Ajustados") +
+  coord_flip() +
+  theme_bw()
+```
+By the heatmap with Standardized Residuals Adjusted values  we can conclude that the pairs strong related are: 
+                Conservador and Poupança; 
+                Moderado and CDB;
+                Agressivo and Ações.
+
+
+## Step 4- Eigenvalues (Autovalores) determination
+
+
+```{r}
+
+#Defining Matrix A by doing (qui2$residuals)/ sqrt(n):
+
+matriz_A <- Chi2$residuals/sqrt(n)
+matriz_A
+
+```
+
+```{r}
+#Defining Matrix W by multiplication of A for its transposed matrix (A')
+
+matrix_W <- t(matriz_A)%*%(matriz_A)
+matrix_W
+```
+
+```{r}
+# Defining number of dimentions
+
+numb_dim <- min(nrow(matrix_W)-1, ncol(matrix_W)-1) 
+numb_dim
+
+```
+Dimentions quantity : 2
+
+```{r}
+# Defining Singulars Values
+
+
+VS_AV <- svd(matriz_A, nu = numb_dim, nv = numb_dim)
+VS_AV
+```
+
+```{r}
+# Singulars Values for each Dimension
+valores_singulares <- VS_AV$d[1:numb_dim]
+valores_singulares
+```
+Axis Values X = 0,4829233 and Y = 0,2905629
+
+```{r}
+# Eigenvalues for each Dimension
+
+eigenvalues <- (valores_singulares)^2
+eigenvalues
+```
+
+```{r}
+# Principal Total Inertia (Chi-square)
+
+inertia_tot <- as.numeric(Chi2$statistic/sum(contingency_table_CA))
+inertia_tot
+```
+
+```{r}
+# Variance explained for each Dimension
+var_expl <- eigenvalues/inertia_tot
+var_expl
+
+```
+
+```{r}
+# Mass calculation for columns
+
+sum_cols <- apply(contingency_table_CA, MARGIN = 1, FUN = sum)
+mass_c <- sum_cols/n
+mass_c
+
+```
+```{r}
+# Mass calculation for rows
+
+sum_rows <- apply(contingency_table_CA, MARGIN = 2, FUN = sum)
+mass_r <- sum_rows/n
+mass_r
+
+```
+```{r}
+# Eigenvectors v for dimensions
+eigen_v <-VS_AV$v
+eigen_v
+```
+
+```{r}
+# Eigenvectors u for dimensions
+eigen_u <-VS_AV$u
+eigen_u
+```
+
+```{r}
+# Summarize info from the last steps
+data.frame(Dimensão = paste("Dimensão", 1:numb_dim),
+           `Valor Singular` = valores_singulares,
+           `Inércia Principal Parcial eigenvalues` = eigenvalues) %>%
+  mutate(`Percentual da Inércia Principal Total` = (`Inércia.Principal.Parcial.eigenvalues`/inertia_tot) * 100,
+         `Percentual da Inércia Principal Total Acumulada` = cumsum(`Percentual da Inércia Principal Total`),
+         Chi2 = Chi2$statistic[[1]] * `Percentual da Inércia Principal Total` / n,
+         `Valor Singular` = `Valor.Singular`,
+         `Inércia Principal Parcial eigenvalues` = Inércia.Principal.Parcial.eigenvalues) %>%
+  select(Dimensão, `Valor Singular`, `Inércia Principal Parcial eigenvalues`,
+         Chi2, `Percentual da Inércia Principal Total`,
+         `Percentual da Inércia Principal Total Acumulada`) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "striped", 
+                full_width = FALSE, 
+                font_size = 17)
+
+```
+## Step 4- Categories Cordinates (scores)
+
+### To variable Perfil
+
+```{r}
+# Abcissas
+coord_abcissas_perfil <- sqrt(valores_singulares[1]) * (mass_c^-0.5) * eigen_u[,1]
+coord_abcissas_perfil
+```
+
+```{r}
+#ordenadas
+coord_ordenadas_perfil <- sqrt(valores_singulares[2]) * (mass_c^-0.5) * eigen_u[,2]
+coord_ordenadas_perfil
+```
+#### For columns ('aplicacao')
+```{r}
+# Abcissas
+coord_abcissas_aplicacao <- sqrt(valores_singulares[1]) * (mass_r^-0.5) * eigen_v[,1]
+coord_abcissas_aplicacao
+
+```
+
+```{r}
+#Coordinates
+coord_ordenadas_aplicacao <- sqrt(valores_singulares[2]) * (mass_r^-0.5) * eigen_v[,2]
+coord_ordenadas_aplicacao
+```
+
+```{r}
+# Perceptual map
+cbind.data.frame(coord_abcissas_perfil, coord_ordenadas_perfil,
+                 coord_abcissas_aplicacao, coord_ordenadas_aplicacao) %>%
+  rename(dim_1_perfil = 1,
+         dim_2_perfil = 2,
+         dim_1_aplicacao = 3,
+         dim_2_aplicacao = 4) %>%
+  rownames_to_column() %>%
+  setNames(make.names(names(.), unique = TRUE)) %>%
+  mutate(aplicacao = rownames(data.frame(coord_abcissas_aplicacao,
+                                         coord_ordenadas_aplicacao))) %>%
+  rename(perfil = 1,
+         dim_1_perfil = 2,
+         dim_2_perfil = 3,
+         dim_1_aplicacao = 4,
+         dim_2_aplicacao = 5) %>%
+  ggplot() +
+  geom_point(aes(x = dim_1_perfil, y = dim_2_perfil),
+             color = "deeppink1",
+             fill = "deeppink1",
+             shape = 24,
+             size = 4) +
+  geom_text_repel(aes(x = dim_1_perfil, y = dim_2_perfil, label = perfil)) +
+  geom_point(aes(x = dim_1_aplicacao, y = dim_2_aplicacao),
+             color = "turquoise3",
+             fill = "turquoise3",
+             shape = 21,
+             size = 4) +
+  geom_text_repel(aes(x = dim_1_aplicacao, y = dim_2_aplicacao, label = aplicacao)) +
+  geom_vline(aes(xintercept = 0), linetype = "longdash", color = "grey48") +
+  geom_hline(aes(yintercept = 0), linetype = "longdash", color = "grey48") +
+  labs(x = paste("Dimensão 1:", paste0(round(var_expl[1] * 100, 2),"%")),
+       y = paste("Dimensão 2:", paste0(round(var_expl[2] * 100, 2),"%"))) +
+  theme_bw()
+```
+
+```{r}
+#Direct result by ANACOR
+anacor <- CA(contingency_table_CA, graph = TRUE)
+```
+
+**Professor's Comment about the two maps generated**:
+<br>Note que a função 'CA' gera um mapa perceptual construído com coordenadas, definidas de maneira diferente em relação às calculadas antes. Entretanto, as proporções das proximidades entre as categorias das variáveis permanecem as mesmas, assim como os percentuais da inércia principal total por dimensão!
+
+# Multiple Correspondence Analysis (MCA)
+
+## Step 0- Knowing my data
+
+```{r}
+dim(perfil_investidor_aplicacao_estadocivil)
+for (c in colnames(perfil_investidor_aplicacao_estadocivil)){ #for each col c on the range
+                for (i in 1:nrow(perfil_investidor_aplicacao_estadocivil)){ #for each row i on the range
+                    if (is.na(perfil_investidor_aplicacao_estadocivil[i,c])) {
+                      print (c(c,"NA FOUND"))
+                      break #if doesnt work with other coders go change break by next
+                    }else{
+                      next
+                    }
+                }       
+              }
+
+```
+ No NA found and dimensions  are 100 rows and 4 cols. 
+```{r}
+# Data view
+perfil_investidor_aplicacao_estadocivil %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "striped", 
+                full_width = FALSE,
+                font_size = 20)
+```
+#### Freq. Table
+```{r}
+summary(perfil_investidor_aplicacao_estadocivil)
+
+```
+## Step 1 - contingency table
+```{r}
+
+sjt.xtab(var.row = perfil_investidor_aplicacao_estadocivil$perfil,
+         var.col = perfil_investidor_aplicacao_estadocivil$aplicacao,
+         show.exp = TRUE,
+         show.row.prc = TRUE,
+         show.col.prc = TRUE)
+
+```
+
+```{r}
+# Perfil x Estado Civil
+sjt.xtab(var.row = perfil_investidor_aplicacao_estadocivil$perfil,
+         var.col = perfil_investidor_aplicacao_estadocivil$estado_civil,
+         show.exp = TRUE,
+         show.row.prc = TRUE,
+         show.col.prc = TRUE)
+```
+
+```{r}
+# Aplicação x Estado Civil
+sjt.xtab(var.row = perfil_investidor_aplicacao_estadocivil$aplicacao,
+         var.col = perfil_investidor_aplicacao_estadocivil$estado_civil,
+         show.exp = TRUE,
+         show.row.prc = TRUE,
+         show.col.prc = TRUE)
+```
+
+### Step 2- Binary Matrix or Burt
+
+```{r}
+matrix_bi <- matlogic(perfil_investidor_aplicacao_estadocivil[, 2:4])
+matrix_bi
+```
+
+```{r}
+# Burt
+matriz_burt <- burt(perfil_investidor_aplicacao_estadocivil[,2:4])
+matriz_burt
+```
+
+Burt also can be done by verifica_burt <- t(matrix_bi) %*% matrix_bi
+
+## MCA Calculations
+
+```{r}
+
+MCA <- dudi.acm(perfil_investidor_aplicacao_estadocivil[,2:4], scannf = FALSE)
+
+```
+
+### Main categories Cordinates view
+ 
+ **Method 1** : Burt Matrix B (comp. 'co' from 'ACM' object)
+ 
+```{r}
+round(MCA$co, 3) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "striped",
+                full_width = FALSE,
+                font_size = 20)
+```
+ **Method 2** : Matrix Binary (comp. 'c1' from 'MCA' object)
+ 
+```{r}
+round(MCA$c1, 3) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "striped",
+                full_width = FALSE,
+                font_size = 20)
+```
+####Masses for rows and cols.
+
+```{r}
+MCA$cw
+```
+
+####Eigenvalues, principal inertia
+
+```{r}
+MCA$eig
+```
+The number of eigen values say that we have 5 dimensions. J-Q = 8-3 = 5
+
+#### Variance percentage explained by dimension
+
+```{r}
+var_perc <- ((MCA$eig)/sum(MCA$eig))*100
+var_perc
+
+```
+View var_perc
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+data.frame( Dimension = paste("Dimension", 1:length(var_perc)),
+            Variance = var_perc) %>%
+  ggplot(aes(x = Dimension,
+         y = Variance,
+         label = paste0(round(Variance, 2), "%" ))) +
+  geom_bar(stat = "identity", fill = "pink") +
+  geom_text(vjust = 2.5, size = 5)+
+  theme_gray()
+ 
+```
+<br>By the graphic analysis we can notice that 62,3% of the variance is explained at the dimensions 1 and 2.
+
+
+### Perceptual Map for ACM
+
+Defining categories number
+
+```{r}
+
+numb_categ <- apply(perfil_investidor_aplicacao_estadocivil[,2:4], 
+                    MARGIN = 2,
+                    FUN = function(x) nlevels(as.factor(x))) # here notice that the var need to be converted to factor for be inputed on nlevel
+
+# Consolidate standard coodinates from Binary Matrix (c1)
+
+df_MCA <- data.frame(MCA$c1, Variable = rep(names(numb_categ), numb_categ))
+
+# View Coord.
+
+df_MCA %>% 
+  rownames_to_column()%>%
+  rename(Category = 1) %>%
+  mutate(Category = gsub("perfil", "",Category),
+         Category = gsub("aplicacao", "",Category),
+         Category = gsub("estado_civil.", "",Category)) %>%
+  kable()%>%
+  kable_styling(bootstrap_options = "striped",
+                full_width = FALSE,
+                font_size = 20)
+
+```
+
+### Ploting the perceptual map
+
+```{r}
+df_MCA %>% 
+  rownames_to_column()%>%
+  rename(Category = 1) %>%
+  mutate(Category = gsub("perfil", "",Category),
+         Category = gsub("aplicacao", "",Category),
+         Category = gsub("estado_civil.", "",Category)) %>%
+  ggplot(aes( x = CS1, y = CS2, label = Category, color = Variable)) +
+  geom_point()+
+  geom_label_repel()+
+  geom_vline(aes(xintercept = 0), linetype = "longdash" , color = "purple")+
+  geom_hline(aes(yintercept = 0), linetype = "longdash" , color = "purple")+
+  labs(x = paste("Dimension 1:", paste0(round(var_perc[1], 2), "%")),
+       y = paste ("Dimension 2:", paste0(round(var_perc[2], 2), "%"))) +
+  scale_color_manual("Variável",
+                     values = c("turquoise3", "green", "deeppink1")) +
+  theme_gray()
+
+
+```
+
+<br> Adding info related to other data set to the map
+
+```{r}
+MCA_observartions_df <- MCA$li
+
+
+MCA_observartions_df %>% 
+  ggplot(aes(x = Axis1, y = Axis2, label = perfil_investidor_aplicacao$estudante)) +
+  geom_point(shape = 17, color = "red", size = 2) +
+  geom_vline(aes(xintercept = 0), linetype = "longdash" , color = "purple")+
+  geom_hline(aes(yintercept = 0), linetype = "longdash" , color = "purple")+
+  geom_text_repel(max.overlaps = 100, size = 3) +
+  geom_density2d(color = "red") + # color related to the density lines
+  geom_label_repel(data = df_MCA, 
+                   aes(x = CS1, y = CS2, 
+                       label = rownames(df_MCA), 
+                       fill = Variable), # color related to the labels
+                   color = "white") +
+ labs(x = paste("Dimension 1:", paste0(round(var_perc[1], 2), "%")),
+       y = paste ("Dimension 2:", paste0(round(var_perc[2], 2), "%"))) +
+  scale_fill_viridis_d() +
+  theme(panel.background = element_rect("white"),
+        panel.border = element_rect("NA"),
+        panel.grid = element_line("gray95"),
+        legend.position = "none")
+```
+
+<br>By the bidimensional analyses is possible to conclude that investors with Moderate investor's profile are correlated with CDB investments and Married status. In another hand  investments on Stocks are strongly correlated to Agressive investor's profile and Single marital status.
